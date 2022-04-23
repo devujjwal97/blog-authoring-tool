@@ -1,5 +1,7 @@
 package blogauthoringtool.blog.Controller;
 
+import java.util.Optional;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -14,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import blogauthoringtool.blog.Exception.CustomException;
 import blogauthoringtool.blog.Model.User;
+import blogauthoringtool.blog.Model.loginResponse;
+import blogauthoringtool.blog.Repository.UserRepository;
 import blogauthoringtool.blog.Security.jwtProvider;
 import blogauthoringtool.blog.Service.UserDetailsServiceImpl;
 import blogauthoringtool.blog.Service.UserService;
@@ -32,7 +36,8 @@ public class UserController {
 	    private UserDetailsServiceImpl userDetailsService;
 	    @Autowired 
 	    private jwtProvider jwtUtil;
-	    
+	    @Autowired
+	    private UserRepository userRepo;
 	    
 	    @PostMapping("/signup")
 	    public Object signup(@RequestBody RegisterRequest registerRequest) {
@@ -75,9 +80,12 @@ public class UserController {
 	        	throw new Exception("Bad Credentials");
 	        }
 	        String token=this.jwtUtil.generateToken(userDetails);
+	        Optional<User> us=userRepo.findByUserName(loginRequest.getUserName());
 	        System.out.println("JWT"+token);
-	        
-	        return ResponseEntity.ok(new jwtResponse(token));
+	        loginResponse logres=new loginResponse();
+	        logres.setJwttoken(new jwtResponse(token));
+	        logres.setUser(us.get());
+	        return ResponseEntity.ok(logres);
 	        
 	    }
 	    
