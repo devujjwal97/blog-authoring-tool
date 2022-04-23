@@ -1,69 +1,55 @@
 package blogauthoringtool.blog.Security;
 
-import blogauthoringtool.blog.Exception.SpringBlogException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.security.KeyStore;
-import java.security.KeyStoreException;
-import java.security.NoSuchAlgorithmException;
-import java.security.PrivateKey;
-import java.security.PublicKey;
-import java.security.UnrecoverableKeyException;
-import java.security.cert.CertificateException;
-
-import javax.annotation.PostConstruct;
-
+import io.jsonwebtoken.SignatureAlgorithm;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+
+import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Function;
 
 @Service
 public class jwtProvider {
 
-	private KeyStore keyStore;
+    private String SECRET_KEY = "secret";
 
-	@PostConstruct
-	public void init() {
-		try {
-			keyStore = KeyStore.getInstance("JKS");
-			InputStream resourceAsStream = getClass().getResourceAsStream("/springblog.jks");
-			keyStore.load(resourceAsStream, "secret".toCharArray());
-		} catch (KeyStoreException | CertificateException | NoSuchAlgorithmException | IOException e) {
-			throw new SpringBlogException("Exception occured while loading keystore");
-		}
+    public String extractUsername(String token) {
+        return extractClaim(token, Claims::getSubject);
+    }
 
-	}
+    public Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
 
-	public boolean validateToken(String jwt) {
-		Jwts.parser().setSigningKey(getPublickey()).parseClaimsJws(jwt);
-		return true;
-	}
+    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
+        final Claims claims = extractAllClaims(token);
+        return claimsResolver.apply(claims);
+    }
+    private Claims extractAllClaims(String token) {
+        return Jwts.parser().setSigningKey(SECRET_KEY).parseClaimsJws(token).getBody();
+    }
 
-	private PublicKey getPublickey() {
-		try {
-			return keyStore.getCertificate("springblog").getPublicKey();
-		} catch (KeyStoreException e) {
-			throw new SpringBlogException("Exception occured while retrieving public key from keystore");
-		}
-	}
+    private Boolean isTokenExpired(String token) {
+        return extractExpiration(token).before(new Date());
+    }
 
-	public String getUsernameFromJWT(String token) {
-		Claims claims = Jwts.parser().setSigningKey(getPublickey()).parseClaimsJws(token).getBody();
+    public String generateToken(UserDetails userDetails) {
+        Map<String, Object> claims = new HashMap<>();
+        return createToken(claims, userDetails.getUsername());
+    }
 
-		return claims.getSubject();
-	}
+    private String createToken(Map<String, Object> claims, String subject) {
 
-	public String generateToken(UserDetails userDetails) {
-		return Jwts.builder().setSubject(userDetails.getUsername()).signWith(null, getPrivateKey()).compact();
-	}
+        return Jwts.builder().setClaims(claims).setSubject(subject).setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10))
+                .signWith(SignatureAlgorithm.HS256, SECRET_KEY).compact();
+    }
 
-	private PrivateKey getPrivateKey() {
-		try {
-			return (PrivateKey) keyStore.getKey("springblog", "secret".toCharArray());
-		} catch (KeyStoreException | NoSuchAlgorithmException | UnrecoverableKeyException e) {
-			throw new SpringBlogException("Exception occured while retrieving public key from keystore");
-		}
-	}
+    public Boolean validateToken(String token, UserDetails userDetails) {
+        final String username = extractUsername(token);
+        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+    }
 }
